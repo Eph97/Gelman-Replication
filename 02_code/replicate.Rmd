@@ -1,5 +1,5 @@
 ---
-output: html_document
+output: pdf_document
 ---
 
 ```{r}
@@ -72,7 +72,7 @@ grid <- expand.grid(x=xcord, y=ycord) %>%
 
 
 ggplot(grid) +
-    geom_contour(aes(x=x, y=y, z=z), binwidth=0.5, geom="contour")  +
+    geom_contour(aes(x=x, y=y, z=z), binwidth=0.5)  +
     xlab("log(a / b)") +
     ylab("log(a + b)")
 
@@ -131,7 +131,7 @@ grid <- expand.grid(x=xcord, y=ycord) %>%
 
 
 ggplot(grid) +
-    geom_contour(aes(x=x, y=y, z=logPost), binwidth=0.5, geom="contour")  +
+    geom_contour(aes(x=x, y=y, z=logPost), binwidth=0.5)  +
     xlab("log(a / b)") +
     ylab("log(a + b)")
 ```
