@@ -17,7 +17,7 @@ options(mc.cores=parallel::detectCores())
 ```
 
 ```{r}
-tumor_experiments <- read.csv("../01_data/data.csv")
+tumor_experiments <- read.csv("01_data/data.csv")
 ```
 
 ```{r}
