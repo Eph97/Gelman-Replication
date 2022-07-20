@@ -6,10 +6,10 @@ output: pdf_document
 library(latex2exp)
 library(tidyverse)
 library(rstan)
+library("gridExtra")
 
 library(doParallel)
 registerDoParallel()
-
 
 rstan_options(auto_write=TRUE)
 options(mc.cores=parallel::detectCores())
@@ -18,6 +18,7 @@ options(mc.cores=parallel::detectCores())
 
 ```{r}
 tumor_experiments <- read.csv("../01_data/data.csv")
+
 ```
 
 ```{r}
@@ -31,6 +32,7 @@ n <- c(20,20,20,20,20,20,20,19,19,19,19,18,18,17,20,20,20,20,19,19,18,18,25,24,
        23,20,20,20,20,20,20,10,49,19,46,27,17,49,47,20,20,13,48,50,20,20,20,20,
        20,20,20,48,19,19,19,22,46,49,20,20,23,19,22,20,20,20,52,46,47,24,14)
 j <- length(y)
+
 ```
 
 ### Marginal posterior distribution (5.8) and helper functions
@@ -56,7 +58,6 @@ marg_post = function(alpha, beta){
   ldens + log(alpha*beta) + log(alpha+beta)*(-5/2) }
 
 ```
-
 
 figure 5.2
 
@@ -107,7 +108,6 @@ ggplot(grid, aes(x=x, y=y)) +
 
 ### figure 5.3b
 
-
 Below, we sample our log-transformed $\alpha's$ and $\beta's$ from the normalized grid. We then plot these samples in a similar fashion to figure 5.3a
 
 ```{r}
@@ -135,9 +135,8 @@ sam
 
 ### figure 5.4
 
+Here, we sample each $\theta_j$ from their respective posterior distribution and compute the 95% confidence interval for these $\theta$ using the simulated $\alpha's$ and $\beta's$ from above. We then plot these with the medians shown as points. We also apply a small "jitter" as recommended in Gelman BA to all the x coordinates to reduce overlap.
 
-Here, we sample each $\theta_j$ from their respective posterior distribution and compute the 95% confidence interval for these $\theta$ using the simulated 
-$\alpha's$ and $\beta's$ from above. We then plot these with the medians shown as points. We also apply a small "jitter" as recommended in Gelman BA to all the x coordinates to reduce overlap.
 ```{r}
 samps <- samps %>% mutate(a=par.alpha(x,y),
          b=par.beta(x,y)) 
@@ -163,11 +162,6 @@ ggplot(qq_hier, aes(x=perc, y=med, ymin=low, ymax=high)) +
 # qq_hier[order(qq_hier$perc, decreasing = TRUE),]
 
 ```
-
-
-
-
-
 
 ```{r}
 # cal.expvals = function(dens) {
@@ -196,48 +190,65 @@ Expected values for $\alpha, \beta, x, y$, and $\theta$ based on pointwise estim
 
 ### Stan
 
+For our hyperprior distributions, I chose following the justification in this **[blog post](https://lingpipe-blog.com/2009/09/23/bayesian-estimators-for-the-beta-binomial-model-of-batting-ability/)** (as well as the method outlined on beta distribution's wiki),
+to reparameterize the the hyper prior in terms of the mean and scale (sample size) of the beta distribution. For the mean, I choose a $unif[0,1]$ distribution, and for the scale, any distribution defined on $[k,\infty]$ for some small k. The pareto distribution seems to be a common choice for such a distribution.
 
-I am no longer using stan to generate the figures from section 5.3 so for now we can ignore the code below.
+When we do this reparameterize, we get $\phi = \frac{\alpha}{\alpha + \beta}$ and $\lambda = \alpha + \beta$
 
-Fit the model
+
+Then 
+$$\alpha = \lambda \cdot \phi$$
+$$\beta = \lambda \cdot ( 1 - \phi)$$
+
 
 ```{r}
-writeLines(readLines("ratmodel-old.stan"))
+
+writeLines(readLines("test1.stan"))
+```
+
+Here we fit the model
+
+```{r}
+rat_fit = stan(file="test1.stan", data=list(J=j, y=y, n=n),
+               iter=2000, chains=4)
+
+rat_sim = rstan::extract(rat_fit)
+# print(rat_fit)
 
 ```
 
-```{r}
-rat_fit = stan(file="ratmodel-old.stan", data=list(J=j, y=y, n=n),
-               iter=2000, chains=4, control=list(adapt_delta=0.99))
-```
+
+
+below we plot the contour and scatter plot of the simulated posterior distribution as in figures 5.3a and 5.3b.
 
 ```{r}
-# pairs(rat_fit, pars=c("alpha", "beta", "lp__"))
-rat_sim = rstan::extract(rat_fit, permuted=TRUE)
-
-n_sims = length(rat_sim$lp__)
-n_sims
-```
-
-Simulated contour and points in figure 5.3(a and b)
-
-```{r}
-
 a <- rat_sim$alpha
 b <- rat_sim$beta
-ggplot(data.frame(x=log(a/b), y=log(a+b), a=a, b=b)) +
-  geom_point(aes(x=x, y=y)) +
-  geom_density_2d(aes(x=x, y=y))
 
+contour <- ggplot(data.frame(x=log(a/b), y=log(a+b), a=a, b=b)) +
+  # geom_point(aes(x=x, y=y)) +
+  geom_density_2d(aes(x=x, y=y)) + theme(aspect.ratio=1)
 
-# contour(kde2d(log(a/b), log(a+b)))
+plot <- ggplot(data.frame(x=log(a/b), y=log(a+b), a=a, b=b)) +
+  geom_point(aes(x=x, y=y)) + theme(aspect.ratio=1)
+  # geom_density_2d(aes(x=x, y=y))
+
+grid.arrange(contour, plot, nrow = 1)
 ```
 
+And here we plot the median's and 95% confidence intervals for each $\theta_i)$ as in figure 5.4
 ```{r}
-theta_sims = data.frame(alpha=rat_sim$alpha, beta=rat_sim$beta) %>%
-    mutate(Theta=rbeta(n(), alpha+y[1], beta + n[1] - y[1]))
+
+theta_summary <- summary(rat_fit, pars = c("theta"), probs = c(0.025, 0.5, 0.975))$summary
+
+qq_hier <- data.frame(id=1:length(n), n=n, y=y,
+                      low=theta_summary[,"2.5%"], high=theta_summary[,"97.5%"], med=theta_summary[,"50%"], perc=(y/n))
+
+qq_hier$perc <- jitter(qq_hier$perc, amount=0.025)
+
+
+ggplot(qq_hier, aes(x=perc, y=med, ymin=low, ymax=high)) +
+  geom_point() + geom_abline(intercept=0, slope=1) + geom_linerange() +
+  theme(aspect.ratio=1) +  labs(x = "Oberserved rate y(i)/n(i)", y = "95% posterior interval for theta_i") 
 
 ```
-
-
-
